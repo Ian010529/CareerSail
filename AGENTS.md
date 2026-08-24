@@ -31,7 +31,7 @@ CareerSail（职航）是一个 AI Agent 驱动的本地求职看板。用户在
 ## 技术栈
 
 - 前端：单页 HTML/CSS/JS（dashboard.html）
-- 后端：Node.js HTTP 服务（server.js）
+- 后端：Node.js 零依赖 HTTP 服务（server.js）
 - 数据：CSV + JSONL 文件存储
 - 搜索：Playwright MCP 浏览器自动化 + 官网 API 直接调用
 - 配置：JSON 文件（config/user_profile.json）
@@ -42,7 +42,7 @@ CareerSail（职航）是一个 AI Agent 驱动的本地求职看板。用户在
 CareerSail/
 ├── dashboard/              # 看板核心
 │   ├── dashboard.html      # 单页应用前端
-│   ├── server.js           # HTTP 服务端
+│   ├── server.js           # HTTP 服务端（零依赖）
 │   ├── start.bat/sh        # 启动脚本
 │   ├── job_pool.csv        # 岗位池（运行时生成）
 │   ├── follow_up.csv       # 跟进记录（运行时生成）
@@ -59,7 +59,7 @@ CareerSail/
 ├── test/
 │   └── smoke-test.js       # 冒烟测试
 ├── SKILL.md                # Agent 操作指令
-├── package.json            # Node.js 依赖配置
+├── package.json            # 零依赖
 └── .gitignore
 ```
 

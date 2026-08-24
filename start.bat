@@ -13,16 +13,6 @@ if %errorlevel% neq 0 (
 
 :: 启动服务
 cd /d "%~dp0"
-if not exist "node_modules\playwright" (
-    echo 首次运行，正在安装岗位爬虫依赖...
-    call npm install
-    if %errorlevel% neq 0 (
-        echo [错误] npm 依赖安装失败。
-        pause
-        exit /b 1
-    )
-    call npx playwright install chromium
-)
 echo 正在启动 CareerSail · 职航...
 node dashboard/server.js
 pause
