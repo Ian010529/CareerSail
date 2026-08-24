@@ -6,6 +6,9 @@ dashboard/external_companies.csv
 dashboard/application_log.csv
 dashboard/searched_companies.json
 
+# 浏览器授权会话（包含 Cookie / 登录状态，严禁提交）
+data/auth/
+
 # 本地备份（含个人数据快照，严禁提交）
 backup/
 
