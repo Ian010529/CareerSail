@@ -1,60 +1,71 @@
-const fs = require('fs');
-const path = require('path');
-const readline = require('readline');
+const http = require('http');
 const { chromium } = require('playwright');
 
-const ROOT = path.resolve(__dirname, '..');
-const statePath = process.env.JOBSDB_STORAGE_STATE || path.join(ROOT, 'data', 'auth', 'jobsdb_state.json');
-const browserChannel = process.env.JOBSDB_BROWSER_CHANNEL || '';
+const endpoint = process.env.JOBSDB_CDP_ENDPOINT || 'http://127.0.0.1:9222';
 
-function waitForEnter(message) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise(resolve => rl.question(message, () => {
-    rl.close();
-    resolve();
-  }));
+function waitForJsonVersion(url) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`Chrome CDP endpoint returned HTTP ${res.statusCode}`));
+          return;
+        }
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(e); }
+      });
+    });
+    req.setTimeout(5000, () => req.destroy(new Error('Chrome CDP endpoint timed out')));
+    req.on('error', reject);
+  });
 }
 
 async function main() {
-  const launchOptions = {
-    headless: false,
-    args: ['--no-sandbox', '--disable-dev-shm-usage']
-  };
-  if (browserChannel) launchOptions.channel = browserChannel;
-
-  const browser = await chromium.launch(launchOptions);
-  const contextOptions = {
-    viewport: { width: 1440, height: 900 },
-    locale: 'en-HK'
-  };
-  if (fs.existsSync(statePath)) contextOptions.storageState = statePath;
-
-  const context = await browser.newContext(contextOptions);
-  const page = await context.newPage();
-
-  console.log('Opening JobsDB in a normal visible browser session...');
-  console.log('If JobsDB asks you to sign in or complete a verification step, do it manually in this window.');
-  console.log('This helper does not solve or bypass website challenges; it only saves your normal browser session afterward.');
-
-  await page.goto('https://hk.jobsdb.com/', {
-    waitUntil: 'domcontentloaded',
-    timeout: 60000
-  });
-
-  await waitForEnter('\nWhen the JobsDB home/search page is usable, press Enter here to save the session... ');
-
-  const searchCount = await page.locator('[data-automation="searchKeywordsField"]').count().catch(() => 0);
-  if (!searchCount) {
-    console.error('JobsDB search field is not visible. Session was not saved.');
-    await browser.close();
+  console.log(`Checking user-controlled Chrome at ${endpoint} ...`);
+  try {
+    await waitForJsonVersion(`${endpoint}/json/version`);
+  } catch (error) {
+    console.error('No compatible Chrome CDP session is running.');
+    console.error('Run: npm run jobsdb:chrome');
+    console.error('Then complete any normal JobsDB verification/login in that Chrome window and leave it open.');
     process.exitCode = 2;
     return;
   }
 
-  fs.mkdirSync(path.dirname(statePath), { recursive: true });
-  await context.storageState({ path: statePath });
-  console.log(`Session saved to: ${statePath}`);
-  await browser.close();
+  const browser = await chromium.connectOverCDP(endpoint, { timeout: 10000, isLocal: true });
+  try {
+    const contexts = browser.contexts();
+    if (!contexts.length) {
+      console.error('Chrome exposes no browser context.');
+      process.exitCode = 2;
+      return;
+    }
+
+    const context = contexts[0];
+    let page = context.pages().find(p => /https?:\/\/hk\.jobsdb\.com/i.test(p.url() || ''));
+    if (!page) page = await context.newPage();
+    if (!/https?:\/\/hk\.jobsdb\.com/i.test(page.url() || '')) {
+      await page.goto('https://hk.jobsdb.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    }
+
+    const title = await page.title().catch(() => '');
+    const search = page.locator('[data-automation="searchKeywordsField"]');
+    const visible = await search.count().then(async count => count > 0 && await search.first().isVisible()).catch(() => false);
+
+    if (!visible) {
+      console.error(`JobsDB is not ready in the attached Chrome session. Current title: ${title || '(unknown)'}`);
+      console.error('Complete the normal website verification/login in that SAME Chrome window, then rerun this check.');
+      process.exitCode = 2;
+      return;
+    }
+
+    console.log('JobsDB search field is visible in the persistent Chrome session.');
+    console.log('CareerSail can now attach to this Chrome with JOBSDB_BROWSER_MODE=cdp (the default).');
+  } finally {
+    await browser.close().catch(() => {});
+  }
 }
 
 main().catch(error => {
