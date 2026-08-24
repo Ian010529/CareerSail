@@ -5,7 +5,7 @@
  * 测试覆盖：
  *   1. 核心文件存在（含 templates/config/user_profile.json 模板）
  *   2. .gitignore 保护
- *   3. package.json 零依赖
+ *   3. package.json 仅增加 Playwright 爬虫运行时
  *   4. server.js 代码质量（含 cohort / 实习过滤 / 发现端点）
  *   5. dashboard.html XSS 防护
  *   6. lib/job_filters.js 单元测试（届别 / 实习 / 新鲜度 / 匹配度）
@@ -82,6 +82,9 @@ async function run() {
   assert(fs.existsSync(path.join(__dirname, '..', 'lib', 'recruiters', 'aggregate.js')), 'lib/recruiters/aggregate.js 存在（聚合源适配器 v3.4）');
   assert(fs.existsSync(path.join(__dirname, '..', 'lib', 'recruiters', 'generic.js')), 'lib/recruiters/generic.js 存在（通用兜底适配器 v3.4）');
   assert(fs.existsSync(path.join(__dirname, '..', 'lib', 'recruiters', 'index.js')), 'lib/recruiters/index.js 存在（适配器入口）');
+  for (const source of ['jobsdb', 'jijis', 'offertoday', 'hkstp', 'cyberport', 'indeed']) {
+    assert(fs.existsSync(path.join(__dirname, '..', 'lib', 'recruiters', 'hk', `${source}.js`)), `香港平台爬虫存在: ${source}`);
+  }
   // v3.5 外部公司库文件
   assert(fs.existsSync(path.join(__dirname, '..', 'lib', 'feishu_source.js')), 'lib/feishu_source.js 存在（飞书 Base 同步 v3.5）');
   assert(fs.existsSync(path.join(__dirname, '..', 'templates', 'config', 'external_source.json')), 'templates/config/external_source.json 模板存在（v3.5）');
@@ -109,11 +112,11 @@ async function run() {
   assert(gitignore.includes('dashboard/searched_companies.json'), '.gitignore 保护已搜公司记录（v2.1）');
   assert(gitignore.includes('backup/'), '.gitignore 保护本地备份目录（v2.1）');
 
-  // 3. 检查 package.json 无 Playwright 依赖
+  // 3. 检查 package.json 仅增加 Playwright 爬虫运行时
   console.log('  [3/9] 检查 package.json...');
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8'));
-  assert(!pkg.dependencies || !pkg.dependencies.playwright, 'package.json 无 Playwright 依赖');
-  assert(Object.keys(pkg.dependencies || {}).length === 0, 'package.json 零依赖');
+  assert(!!(pkg.dependencies && pkg.dependencies.playwright), 'package.json 含 Playwright 爬虫运行时');
+  assert(Object.keys(pkg.dependencies || {}).length === 1, 'package.json 仅增加一个运行依赖');
 
   // 4. 检查 server.js 代码质量
   console.log('  [4/9] 检查 server.js 代码...');
@@ -363,6 +366,9 @@ async function run() {
   assert(recruiters.detectRecruiterType('https://agirobot.jobs.feishu.cn/') === 'feishu', 'detectRecruiterType: *.jobs.feishu.cn → feishu');
   assert(recruiters.detectRecruiterType('https://app.mokahr.com/campus_apply/cyou-inc') === 'moka', 'detectRecruiterType: *.mokahr.com → moka');
   assert(recruiters.detectRecruiterType('https://www.nowcoder.com/school/schedule') === 'aggregate', 'detectRecruiterType: nowcoder.com → aggregate');
+  assert(recruiters.detectRecruiterType('https://hk.jobsdb.com/jobs') === 'jobsdb', 'detectRecruiterType: hk.jobsdb.com → jobsdb');
+  assert(recruiters.detectRecruiterType('https://hk.indeed.com/jobs') === 'indeed', 'detectRecruiterType: hk.indeed.com → indeed');
+  assert(recruiters.detectRecruiterType('https://talentjobseeker.hkstp.org/search') === 'hkstp', 'detectRecruiterType: HKSTP → hkstp');
   assert(recruiters.detectRecruiterType('https://campus.jd.com/') === 'unknown', 'detectRecruiterType: 京东自研 → unknown');
 
   // 8.4 createRecruiterByUrl 未知公司按 URL 自动路由（v3.4 核心特性）
@@ -429,12 +435,35 @@ async function run() {
   assert(supportedCompanies.some(c => c.company === '搜狐畅游' && c.type === 'moka'), 'listSupportedCompanies: 含搜狐畅游(moka)');
 
   const supportedTypes = recruiters.listSupportedTypes();
-  assert(supportedTypes.length === 5, 'listSupportedTypes: 返回 5 种系统类型');
+  assert(supportedTypes.length === 11, 'listSupportedTypes: 返回 11 种系统类型');
   assert(supportedTypes.some(t => t.type === 'beisen'), 'listSupportedTypes: 含 beisen');
   assert(supportedTypes.some(t => t.type === 'feishu'), 'listSupportedTypes: 含 feishu');
   assert(supportedTypes.some(t => t.type === 'moka'), 'listSupportedTypes: 含 moka');
   assert(supportedTypes.some(t => t.type === 'aggregate'), 'listSupportedTypes: 含 aggregate');
   assert(supportedTypes.some(t => t.type === 'generic'), 'listSupportedTypes: 含 generic');
+  for (const source of ['jobsdb', 'jijis', 'offertoday', 'hkstp', 'cyberport', 'indeed']) {
+    assert(supportedTypes.some(t => t.type === source), `listSupportedTypes: 含 ${source}`);
+  }
+
+  // 8.10 香港平台爬虫注册器与 CareerSail 字段适配（离线测试，不访问平台）
+  const hkRecruiters = require(path.join(__dirname, '..', 'lib', 'recruiters', 'hk'));
+  assert(JSON.stringify(hkRecruiters.listSources()) === '["jobsdb","jijis","offertoday","hkstp","cyberport","indeed"]', '香港爬虫注册器包含参考项目的 6 个来源');
+  const jobsdbRecruiter = recruiters.createRecruiter('jobsdb');
+  const normalizedHKJob = jobsdbRecruiter.normalizeJob({
+    job_id: 'jobsdb_123',
+    title: 'Software Engineer',
+    company: 'Example Limited',
+    location: 'Hong Kong',
+    salary_raw: 'HK$30,000',
+    jd_raw: 'Build and maintain software systems',
+    url: 'https://hk.jobsdb.com/job/123',
+    source: 'jobsdb'
+  });
+  assert(normalizedHKJob.id === 'jobsdb_123', '香港平台适配器映射 id');
+  assert(normalizedHKJob.city === 'Hong Kong', '香港平台适配器映射 location → city');
+  assert(normalizedHKJob.description.includes('software systems'), '香港平台适配器映射 jd_raw → description');
+  assert(normalizedHKJob.sourcePlatform === 'jobsdb', '香港平台适配器保留 sourcePlatform');
+  assert(normalizedHKJob.salaryRaw === 'HK$30,000', '香港平台适配器保留 salaryRaw');
 
   // 9. 启动服务器并测试 API
   console.log('  [9/9] 启动服务器测试 API...');
@@ -492,6 +521,17 @@ async function run() {
     assert(supportedGetData.companies.some(c => c.company === '三一重工'), '/api/supported-companies 含三一重工（v3.9 制造业扩充）');
     assert(supportedGetData.companies.some(c => c.company === '海康机器人'), '/api/supported-companies 含海康机器人（v3.9 机器人扩充）');
     assert(supportedGetData.companies.length >= 80, '/api/supported-companies 公司数 >=80（v3.9 多行业扩充）');
+
+    // 香港平台搜索路由：未知来源应被跳过且不触发任何落盘
+    const platformSearch = await httpPost(`http://localhost:${PORT}/api/search-jobs`, {
+      sources: ['unknown-source'],
+      keyword: 'software engineer',
+      maxPages: 1
+    });
+    assert(platformSearch.status === 200, 'POST /api/search-jobs 支持 sources 平台搜索参数');
+    const platformSearchData = JSON.parse(platformSearch.data);
+    assert(platformSearchData.success === true && Array.isArray(platformSearchData.jobs), '平台搜索返回 CareerSail jobs 数组');
+    assert(Array.isArray(platformSearchData.sources), '平台搜索响应保留 sources 字段');
 
     // 8.6 /api/discover-plan（新增端点，核心功能）
     const discover = await httpPost(`http://localhost:${PORT}/api/discover-plan`, {});

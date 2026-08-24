@@ -1312,9 +1312,17 @@ const server = http.createServer(async (req, res) => {
       // 响应: { success: true, jobs: [...], source: "beisen-api" }
       if (url.pathname === '/api/search-jobs') {
         try {
-          const { company, keyword = '', campusUrl = '' } = body;
-          if (!company) {
-            sendJSON(res, 400, { success: false, error: 'company 为必填' });
+          const {
+            company = '',
+            keyword = '',
+            campusUrl = '',
+            sources = [],
+            platforms = [],
+            maxPages = 5
+          } = body;
+          const selectedSources = Array.isArray(sources) && sources.length > 0 ? sources : platforms;
+          if (!company && (!Array.isArray(selectedSources) || selectedSources.length === 0)) {
+            sendJSON(res, 400, { success: false, error: 'company 或 sources 至少填写一项' });
             return;
           }
 
@@ -1322,17 +1330,27 @@ const server = http.createServer(async (req, res) => {
           const searchModule = require(path.join(__dirname, '..', 'lib', 'search_jobs.js'));
           const profile = loadUserProfile();
 
-          const jobs = await searchModule.searchCompanyJobs({
-            company,
-            campusUrl,
-            keyword,
-            graduationYear: profile.graduation_year || '',
-            keywords: profile.keywords || [],
-            excludeInternship: profile.job_type !== 'internship'
-          });
+          const isPlatformSearch = Array.isArray(selectedSources) && selectedSources.length > 0;
+          const jobs = isPlatformSearch
+            ? await searchModule.searchPlatformJobs({
+                sources: selectedSources,
+                keyword,
+                maxPages: Math.max(1, Math.min(Number(maxPages) || 5, 10)),
+                graduationYear: profile.graduation_year || '',
+                keywords: profile.keywords || [],
+                excludeInternship: profile.job_type !== 'internship'
+              })
+            : await searchModule.searchCompanyJobs({
+                company,
+                campusUrl,
+                keyword,
+                graduationYear: profile.graduation_year || '',
+                keywords: profile.keywords || [],
+                excludeInternship: profile.job_type !== 'internship'
+              });
 
           // v4.1: 检查是否有 _error 标记（搜索失败），透传错误信息
-          const hasError = jobs.length === 1 && jobs[0]._error;
+          const hasError = !isPlatformSearch && jobs.length === 1 && jobs[0]._error;
           if (hasError) {
             appendLog({
               msg: `❌ 搜索失败: ${company} — ${jobs[0]._errorMessage}`,
@@ -1343,14 +1361,14 @@ const server = http.createServer(async (req, res) => {
               error: jobs[0]._errorMessage,
               jobs: [],
               count: 0,
-              company,
+              company: company || selectedSources.join(','),
               hint: jobs[0].note || '请检查 Playwright MCP 服务或公司校招官网'
             });
             return;
           }
 
           appendLog({
-            msg: `🔍 真实搜索: ${company} "${keyword}" → ${jobs.length} 个岗位`,
+            msg: `🔍 真实搜索: ${isPlatformSearch ? selectedSources.join(',') : company} "${keyword}" → ${jobs.length} 个岗位`,
             type: 'real-search'
           });
 
@@ -1359,6 +1377,7 @@ const server = http.createServer(async (req, res) => {
             jobs,
             count: jobs.length,
             company,
+            sources: isPlatformSearch ? selectedSources : [],
             source: jobs.length > 0 && jobs[0].source ? jobs[0].source : 'api'
           });
         } catch (e) {
