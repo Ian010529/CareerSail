@@ -23,16 +23,25 @@ function run() {
     'stable ID should have a deterministic fallback'
   );
 
-  const crawler = new JobsDBBrowserCrawler({
-    headless: true,
-    storageStatePath: path.join(__dirname, '.tmp-jobsdb-state.json')
-  });
-  assert.strictEqual(crawler.headless, true);
+  const crawler = new JobsDBBrowserCrawler();
+  assert.strictEqual(crawler.connectionMode, 'cdp',
+    'JobsDB browser crawler should default to CDP connection mode');
+  assert.strictEqual(crawler.cdpEndpoint, 'http://127.0.0.1:9222',
+    'JobsDB browser crawler should default to the local Chrome CDP endpoint');
   assert.strictEqual(typeof crawler.submitSearch, 'function');
   assert.strictEqual(typeof crawler.readCards, 'function');
   assert.strictEqual(typeof crawler.readDetailFromPanel, 'function');
   assert.strictEqual(typeof crawler.readDetailFromUrl, 'function');
   assert.strictEqual(typeof crawler.detectAccessState, 'function');
+  assert.strictEqual(typeof crawler.searchFieldVisible, 'function');
+
+  const managed = new JobsDBBrowserCrawler({
+    connectionMode: 'managed',
+    headless: true,
+    storageStatePath: path.join(__dirname, '.tmp-jobsdb-state.json')
+  });
+  assert.strictEqual(managed.connectionMode, 'managed');
+  assert.strictEqual(managed.headless, true);
 
   console.log('HK crawler tests passed');
 }
