@@ -1,0 +1,23 @@
+name: JobsDB browser integration CI
+
+on:
+  push:
+    branches:
+      - codex/jobsdb-browser-session-v2
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SKIP_AUTO_SYNC: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: node test/hk-crawler-test.js
