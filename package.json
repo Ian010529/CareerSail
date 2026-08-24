@@ -5,7 +5,10 @@
   "main": "dashboard/server.js",
   "scripts": {
     "start": "node dashboard/server.js",
-    "test": "node test/smoke-test.js"
+    "test": "node test/smoke-test.js",
+    "test:hk": "node test/hk-crawler-test.js",
+    "jobsdb:chrome": "node scripts/start_jobsdb_chrome.js",
+    "jobsdb:check": "node scripts/bootstrap_jobsdb_session.js"
   },
   "keywords": [
     "job-tracker",
